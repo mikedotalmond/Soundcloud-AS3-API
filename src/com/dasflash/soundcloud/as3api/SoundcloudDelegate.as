@@ -1,8 +1,10 @@
 package com.dasflash.soundcloud.as3api
 {
-	import com.adobe.serialization.json.JSON;
+	//import com.adobe.serialization.json.JSON; // using native JSON support in FP 11+
+	
 	import com.dasflash.soundcloud.as3api.events.SoundcloudEvent;
 	import com.dasflash.soundcloud.as3api.events.SoundcloudFaultEvent;
+	import flash.events.SecurityErrorEvent;
 
 	import flash.events.DataEvent;
 	import flash.events.Event;
@@ -150,7 +152,7 @@ package com.dasflash.soundcloud.as3api
 				}
 
 				// if there was no FileReference (i.e. this is going to be a form-urlencoded request)
-				// and method is POST 
+				// and method is POST
 				if (!fileReference && method == URLRequestMethod.POST) {
 
 					// ensure ALL parameters get signed (OAuth special rule)
@@ -165,7 +167,7 @@ package com.dasflash.soundcloud.as3api
 			var oAuthRequest:OAuthRequest = new OAuthRequest(method, url, oauthParams, consumer, token);
 
 			// build url with oauth parameters
-			// this will also add the oauth parameters and signature to the 
+			// this will also add the oauth parameters and signature to the
 			// oauthParams object so we do this even if we don't need the signedURL later on
 			var signedURL:String = oAuthRequest.buildRequest(signatureMethod,
 				OAuthRequest.RESULT_TYPE_URL_STRING, "");
@@ -224,28 +226,40 @@ package com.dasflash.soundcloud.as3api
 				fileReference.addEventListener(ProgressEvent.PROGRESS, uploadProgressHandler);
 				fileReference.addEventListener(DataEvent.UPLOAD_COMPLETE_DATA, uploadCompleteDataHandler);
 				fileReference.addEventListener(IOErrorEvent.IO_ERROR, ioErrorHandler);
+				fileReference.addEventListener(SecurityErrorEvent.SECURITY_ERROR, securityErrorHandler);
 				fileReference.addEventListener(HTTPStatusEvent.HTTP_STATUS, httpStatusHandler);
 
 					// otherwise this will be handled with URLLoader.load()
 			} else {
 
 				// create url loader
+				if (urlLoader != null) disposeURLLoader();
 				urlLoader = new URLLoader();
-
+				
 				// make sure dataFormat is in line with responseFormat
 				if (responseFormat == SoundcloudResponseFormat.JSON || responseFormat == SoundcloudResponseFormat.XML) {
 					dataFormat = URLLoaderDataFormat.TEXT;
 				}
-
+				
 				// set data format
 				urlLoader.dataFormat = dataFormat;
 
 				urlLoader.addEventListener(Event.COMPLETE, urlLoaderCompleteHandler);
 				urlLoader.addEventListener(HTTPStatusEvent.HTTP_STATUS, httpStatusHandler);
 				urlLoader.addEventListener(IOErrorEvent.IO_ERROR, ioErrorHandler);
+				urlLoader.addEventListener(SecurityErrorEvent.SECURITY_ERROR, securityErrorHandler);
 			}
 		}
-
+		
+		private function disposeURLLoader():void {
+			try { urlLoader.close(); } catch (err:Error) { }; // try closing
+			urlLoader.removeEventListener(Event.COMPLETE, urlLoaderCompleteHandler);
+			urlLoader.removeEventListener(HTTPStatusEvent.HTTP_STATUS, httpStatusHandler);
+			urlLoader.removeEventListener(IOErrorEvent.IO_ERROR, ioErrorHandler);
+			urlLoader.removeEventListener(SecurityErrorEvent.SECURITY_ERROR, securityErrorHandler);
+			urlLoader = null;
+		}
+		
 		/**
 		 * Sends the actual request.
 		 */
@@ -324,7 +338,7 @@ package com.dasflash.soundcloud.as3api
 				case SoundcloudResponseFormat.JSON:
 
 					try {
-						data = JSON.decode(rawData as String);
+						data = JSON.parse(rawData as String);
 
 					} catch (error:Error) {
 						dispatchFaultEvent("couldn't parse JSON String: " + error.message);
@@ -452,6 +466,14 @@ package com.dasflash.soundcloud.as3api
 		{
 			dispatchFaultEvent(event.text);
 		}
-
+		
+		
+		/**
+		 *
+		 * @param	e
+		 */
+		protected function securityErrorHandler(e:SecurityErrorEvent):void {
+			dispatchFaultEvent(e.text);
+		}
 	}
 }
